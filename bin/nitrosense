@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""
+NitroSense CLI & Controller for Acer Nitro V 15
+"""
+import sys
+import os
+import time
+import argparse
+
+sys.path.insert(0, "/usr/local/share/nitrosense")
+from backend import NitroBackend
+
+# ANSI color codes
+BOLD = "\033[1m"
+RESET = "\033[0m"
+RED = "\033[38;5;196m"
+GREEN = "\033[38;5;46m"
+YELLOW = "\033[38;5;220m"
+CYAN = "\033[38;5;51m"
+BLUE = "\033[38;5;39m"
+PURPLE = "\033[38;5;177m"
+GRAY = "\033[38;5;244m"
+DARK = "\033[38;5;238m"
+
+def render_bar(val, max_val, length=18, color=CYAN):
+    ratio = min(1.0, max(0.0, val / max_val))
+    filled = int(round(length * ratio))
+    empty = length - filled
+    char = "━"
+    return f"{color}{char * filled}{DARK}{char * empty}{RESET}"
+
+def get_temp_color(temp):
+    if temp < 55:
+        return GREEN
+    elif temp < 75:
+        return YELLOW
+    return RED
+
+def print_dashboard(backend):
+    m = backend.get_all_metrics()
+    cfan = m["cpu_fan_rpm"]
+    gfan = m["gpu_fan_rpm"]
+    ctemp = m["cpu_temp"]
+    gtemp = m["gpu_temp"]
+    prof = m["profile"]["display"]
+    prof_raw = m["profile"]["raw"]
+    fan_mode = m.get("fan_mode", "auto").upper()
+    nv = m["nvidia"]
+    bat = m["battery"]
+
+    out = []
+    out.append(f"{RED}{BOLD}╔════════════════════════════════════════════════════════════════╗{RESET}")
+    out.append(f"{RED}{BOLD}║                   ACER NITRO V 15 (ANV15-51)                   ║{RESET}")
+    out.append(f"{RED}{BOLD}║                          NITROSENSE                            ║{RESET}")
+    out.append(f"{RED}{BOLD}╠════════════════════════════════════════════════════════════════╣{RESET}")
+
+    # Fans row
+    f_mode_col = CYAN if fan_mode == "AUTO" else (RED if fan_mode == "MAX" else PURPLE)
+    out.append(f"║ {BOLD}COOLING & FANS{RESET}  {GRAY}[Mode: {f_mode_col}{BOLD}{fan_mode}{RESET}{GRAY}]{RESET}                                   ║")
+    cbar = render_bar(cfan, 8000, 18, CYAN)
+    gbar = render_bar(gfan, 8000, 18, BLUE)
+    out.append(f"║   CPU Fan: {CYAN}{BOLD}{cfan:4d} RPM{RESET} {cbar}  (Max ~8000)   ║")
+    out.append(f"║   GPU Fan: {BLUE}{BOLD}{gfan:4d} RPM{RESET} {gbar}  (Max ~8000)   ║")
+    out.append(f"║   Fan Controls: {CYAN}auto{RESET} │ {RED}max{RESET} │ {PURPLE}fan <25-100%>{RESET}                      ║")
+    out.append(f"║                                                                ║")
+
+    # Temperatures
+    ct_col = get_temp_color(ctemp)
+    gt_col = get_temp_color(gtemp)
+    out.append(f"║ {BOLD}TEMPERATURES & WORKLOAD{RESET}                                        ║")
+    c_load = m.get("cpu_util", 0.0)
+    m_used = m.get("mem_used_mb", 0)
+    m_tot = m.get("mem_total_mb", 0)
+    m_pct = m.get("mem_util", 0.0)
+    out.append(f"║   CPU:  {ct_col}{BOLD}{ctemp:5.1f} °C{RESET}  │  Load: {c_load:5.1f}% │ RAM: {m_used}MB / {m_tot}MB ({m_pct:.0f}%) ║")
+    out.append(f"║   GPU:  {gt_col}{BOLD}{gtemp:5.1f} °C{RESET}  │  Load: {nv.get('utilization', 0):5d}% │ VRAM: {nv.get('mem_used', 0)}MB / {nv.get('mem_total', 0)}MB      ║")
+    out.append(f"║                                                                ║")
+
+    # Operating Profile
+    prof_color = GREEN if prof == "Whisper / Quiet" else (RED if prof == "Performance" else YELLOW)
+    out.append(f"║ {BOLD}POWER & THERMAL PROFILE{RESET}                                         ║")
+    out.append(f"║   Active Mode: {prof_color}{BOLD}{prof.upper():<16}{RESET} {GRAY}(ACPI: {prof_raw}){RESET}                  ║")
+    out.append(f"║   Modes: 🍃 quiet  │  ⚡ balanced  │  🔥 performance  │  🔋 eco ║")
+    out.append(f"║                                                                ║")
+
+    # Dedicated GPU & Battery
+    out.append(f"║ {BOLD}HARDWARE STATUS{RESET}                                                 ║")
+    out.append(f"║   NVIDIA RTX 3050 Laptop: {nv.get('power', 0.0):.1f}W Power Draw                       ║")
+    if bat["present"]:
+        out.append(f"║   Battery: {bat['capacity']}% ({bat['status']})                                      ║")
+    out.append(f"{RED}{BOLD}╚════════════════════════════════════════════════════════════════╝{RESET}")
+
+    return "\n".join(out)
+
+def main():
+    parser = argparse.ArgumentParser(description="Acer Nitro V 15 Fan & Thermal Manager (NitroSense)")
+    parser.add_argument("command", nargs="?", default="status",
+                        help="Action: status, watch, quiet, whisper, balanced, perf, eco, auto, max, fan <pct>, gui, apply-saved, get-profile")
+    parser.add_argument("speed", nargs="?", type=int, default=None,
+                        help="Fan speed percentage (25-100) when command is fan")
+    parser.add_argument("-w", "--watch", action="store_true", help="Monitor fans and temperatures live")
+    args = parser.parse_args()
+
+    backend = NitroBackend()
+
+    cmd = args.command.lower()
+    if args.watch or cmd == "watch":
+        try:
+            while True:
+                print("\033[H\033[J", end="")
+                print(print_dashboard(backend))
+                print(f"\n{GRAY}Press Ctrl+C to exit monitoring.{RESET}")
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            print("\nExiting NitroSense monitor.")
+            sys.exit(0)
+
+    elif cmd == "gui":
+        import subprocess
+        subprocess.Popen(["/usr/local/share/nitrosense/gui.py"])
+        sys.exit(0)
+
+    elif cmd == "apply-saved":
+        backend.apply_saved_config()
+        print("✓ Applied saved NitroSense configuration.")
+        sys.exit(0)
+
+    elif cmd == "get-profile":
+        prof = backend.get_platform_profile()
+        print(prof.get("normalized", "balanced"))
+        sys.exit(0)
+
+    elif cmd in ["auto", "max"]:
+        ok, res = backend.set_fan_mode(cmd)
+        if ok:
+            print(f"{GREEN}✓ Fan mode set to {BOLD}{cmd.upper()}{RESET}!")
+            time.sleep(0.5)
+            print(print_dashboard(backend))
+        else:
+            print(f"{RED}✗ Failed to set fan mode: {res}{RESET}")
+
+    elif cmd == "fan":
+        if args.speed is None:
+            print(f"{YELLOW}Usage: nitrosense fan <percentage (25-100)>{RESET}")
+            sys.exit(1)
+        speed = max(25, min(100, args.speed))
+        ok, res = backend.set_fan_speed(speed)
+        if ok:
+            print(f"{GREEN}✓ Custom fan speed set to {BOLD}{speed}%{RESET}!")
+            time.sleep(0.5)
+            print(print_dashboard(backend))
+        else:
+            print(f"{RED}✗ Failed to set custom fan speed: {res}{RESET}")
+
+    elif cmd in ["quiet", "whisper", "balanced", "perf", "performance", "eco"]:
+        target = "performance" if cmd == "perf" else ("quiet" if cmd == "whisper" else cmd)
+        ok, res = backend.set_platform_profile(target)
+        if ok:
+            print(f"{GREEN}✓ Successfully switched to {BOLD}{target.capitalize()}{RESET}{GREEN} mode!{RESET}")
+            time.sleep(0.5)
+            print(print_dashboard(backend))
+        else:
+            print(f"{RED}✗ Failed to set mode: {res}{RESET}")
+            sys.exit(1)
+
+    else:
+        print(print_dashboard(backend))
+        print(f"\n{GRAY}Commands:{RESET}")
+        print(f"  {BOLD}nitrosense [quiet | whisper | balanced | perf | eco]{RESET}  -> Switch thermal profile")
+        print(f"  {BOLD}nitrosense [auto | max]{RESET}                                -> Auto / Max 100% turbo fan")
+        print(f"  {BOLD}nitrosense fan <25-100>{RESET}                                -> Custom manual fan speed %")
+        print(f"  {BOLD}nitrosense [watch | gui]{RESET}                               -> Live terminal monitor or GUI")
+
+if __name__ == "__main__":
+    main()

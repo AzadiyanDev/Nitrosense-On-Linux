@@ -1,0 +1,24 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment & configs
+.env
+.venv
+env/
+venv/
+*.json.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Build & packaging
+dist/
+build/
+*.egg-info/
+*.shell-extension.zip

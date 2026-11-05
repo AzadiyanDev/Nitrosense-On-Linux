@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""
+NitroSense Daemon (nitrosensed)
+Ensures persistent thermal profiles & fan control across reboots, sleeps, and app closures.
+"""
+import sys
+import os
+import time
+import json
+import signal
+
+sys.path.insert(0, "/usr/local/share/nitrosense")
+from backend import NitroBackend, CONFIG_FILE, PROFILE_MAP, NORM_MAP
+
+running = True
+
+def handle_signal(sig, frame):
+    global running
+    running = False
+
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
+
+def fix_permissions():
+    try:
+        if os.path.exists("/sys/firmware/acpi/platform_profile"):
+            os.chmod("/sys/firmware/acpi/platform_profile", 0o666)
+    except Exception:
+        pass
+    try:
+        import glob
+        for p in glob.glob("/sys/devices/platform/acer-wmi/hwmon/hwmon*/pwm*"):
+            os.chmod(p, 0o666)
+    except Exception:
+        pass
+
+def main():
+    backend = NitroBackend()
+    fix_permissions()
+
+    # Initial apply of saved config
+    backend.apply_saved_config()
+    print("NitroSense Daemon initialized with saved settings.")
+
+    last_mtime = os.path.getmtime(CONFIG_FILE) if os.path.exists(CONFIG_FILE) else 0
+
+    while running:
+        try:
+            # 1. Check if config file was modified externally
+            if os.path.exists(CONFIG_FILE):
+                mtime = os.path.getmtime(CONFIG_FILE)
+                if mtime != last_mtime:
+                    last_mtime = mtime
+                    backend.apply_saved_config()
+
+            # 2. Check if platform_profile was unexpectedly reverted (e.g. by tuned, sleep, AC)
+            cfg = backend.load_config()
+            target_norm = cfg.get("profile", "performance")
+            expected_raw = PROFILE_MAP.get(target_norm, "balanced-performance")
+
+            current_raw = backend.read_file("/sys/firmware/acpi/platform_profile", "").strip()
+            if current_raw and current_raw != expected_raw:
+                try:
+                    with open("/sys/firmware/acpi/platform_profile", "w") as f:
+                        f.write(expected_raw)
+                except Exception:
+                    pass
+
+            # 3. Ensure permissions remain open
+            fix_permissions()
+
+        except Exception as e:
+            pass
+
+        time.sleep(2.0)
+
+    print("NitroSense Daemon stopped.")
+
+if __name__ == "__main__":
+    main()

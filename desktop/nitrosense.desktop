@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=NitroSense
+Comment=Acer Nitro V 15 Fan & Thermal Manager
+GenericName=Laptop Control Center
+Exec=/usr/local/share/nitrosense/gui.py
+Icon=nitrosense
+Terminal=false
+Type=Application
+Categories=System;Monitor;Settings;
+Keywords=Acer;Nitro;Fan;Temperature;Cooling;Performance;NitroSense;
+StartupNotify=true

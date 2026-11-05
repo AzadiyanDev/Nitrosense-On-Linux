@@ -1,0 +1,7 @@
+{
+  "name": "NitroSense Quick Settings",
+  "description": "Acer Nitro V 15 Quick Settings toggle and panel indicator for NitroSense thermal profiles",
+  "uuid": "nitrosense-quicksettings@azadiyan",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "version": 1
+}
