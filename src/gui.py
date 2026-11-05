@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
 NitroSense GUI - Modern Libadwaita Interface for Acer Nitro V 15
+Designed for Acer Nitro Gaming Laptops (ANV15-51)
 """
 import sys
 import os
+import glob
+import subprocess
 
 sys.path.insert(0, "/usr/local/share/nitrosense")
 from backend import NitroBackend
@@ -15,145 +18,194 @@ from gi.repository import Gtk, Adw, GLib, Gio, Gdk
 
 CSS = """
 window.nitrosense-window {
-    background-color: #121316;
-}
-.nitro-card {
-    background-color: #1a1b20;
-    border: 1px solid #2a2b33;
-    border-radius: 14px;
-    padding: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-.nitro-card:hover {
-    border-color: #3d3e48;
-}
-.fan-label {
-    font-size: 28px;
-    font-weight: 800;
-    font-family: monospace;
-    color: #00d2ff;
-}
-.temp-badge-cool {
-    font-size: 22px;
-    font-weight: 800;
-    font-family: monospace;
-    color: #4cd964;
-}
-.temp-badge-warm {
-    font-size: 22px;
-    font-weight: 800;
-    font-family: monospace;
-    color: #ff9500;
-}
-.temp-badge-hot {
-    font-size: 22px;
-    font-weight: 800;
-    font-family: monospace;
-    color: #ff3b30;
-}
-.profile-btn {
-    background-color: #24252c;
-    border: 2px solid #343640;
-    border-radius: 12px;
-    padding: 8px 4px;
-    transition: all 200ms ease-in-out;
-}
-.profile-btn:hover {
-    background-color: #2d2e36;
-    border-color: #555765;
-}
-.profile-btn-active {
-    background: linear-gradient(135deg, #b8141a, #e52b2b);
-    border: 2px solid #ff4d4d;
-    color: #ffffff;
-    font-weight: bold;
-    box-shadow: 0 0 16px rgba(229, 43, 43, 0.5);
-}
-.profile-btn-title {
-    font-size: 14px;
-    font-weight: 700;
-}
-.profile-btn-desc {
-    font-size: 11px;
-    color: #9ea0aa;
-}
-.profile-btn-active .profile-btn-desc {
-    color: #fce8e8;
+    background-color: #0b0c10;
+    color: #e2e8f0;
 }
 
-/* Fan Mode Buttons */
-.fan-mode-btn {
-    background-color: #24252c;
-    border: 2px solid #343640;
-    border-radius: 10px;
-    padding: 10px 8px;
-    font-weight: bold;
+.nitro-card {
+    background-color: #12151d;
+    border: 1px solid #1f2433;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
-.fan-mode-btn:hover {
-    background-color: #2e303a;
-    border-color: #4a4d5c;
+
+.nitro-card:hover {
+    border-color: #2e354b;
 }
-.fan-mode-auto-active {
-    background: linear-gradient(135deg, #0077b6, #00b4d8);
-    border: 2px solid #00f0ff;
-    color: #ffffff;
-    box-shadow: 0 0 14px rgba(0, 180, 216, 0.45);
-}
-.fan-mode-max-active {
-    background: linear-gradient(135deg, #c91818, #ff3b30);
-    border: 2px solid #ff5555;
-    color: #ffffff;
-    box-shadow: 0 0 18px rgba(255, 59, 48, 0.6);
-}
-.fan-mode-custom-active {
-    background: linear-gradient(135deg, #7b2cbf, #9d4edd);
-    border: 2px solid #c77dff;
-    color: #ffffff;
-    box-shadow: 0 0 14px rgba(157, 78, 221, 0.45);
+
+.section-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: #94a3b8;
 }
 
 .card-title {
     font-size: 15px;
     font-weight: 700;
-    color: #ffffff;
+    color: #f8fafc;
 }
+
 .stat-subtext {
     font-size: 12px;
-    color: #8c8e96;
+    color: #64748b;
 }
-progressbar.nitro-fan-bar trough {
-    background-color: #24252c;
+
+.fan-label {
+    font-size: 26px;
+    font-weight: 800;
+    font-family: monospace;
+    color: #00d2ff;
+}
+
+.fan-label-gpu {
+    font-size: 26px;
+    font-weight: 800;
+    font-family: monospace;
+    color: #10b981;
+}
+
+.temp-badge-cool {
+    font-size: 20px;
+    font-weight: 800;
+    font-family: monospace;
+    color: #10b981;
+}
+
+.temp-badge-warm {
+    font-size: 20px;
+    font-weight: 800;
+    font-family: monospace;
+    color: #f59e0b;
+}
+
+.temp-badge-hot {
+    font-size: 20px;
+    font-weight: 800;
+    font-family: monospace;
+    color: #ef4444;
+}
+
+/* Profile Selector Cards */
+.profile-btn {
+    background-color: #161a24;
+    border: 2px solid #242a3b;
+    border-radius: 12px;
+    padding: 12px 10px;
+    transition: all 180ms ease-in-out;
+}
+
+.profile-btn:hover {
+    background-color: #1c2230;
+    border-color: #3b4560;
+}
+
+.profile-btn-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.profile-btn-desc {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.profile-btn-active {
+    background: linear-gradient(135deg, #991b1b, #dc2626);
+    border: 2px solid #f87171;
+    color: #ffffff;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.45);
+}
+
+.profile-btn-active .profile-btn-title,
+.profile-btn-active .profile-btn-desc {
+    color: #ffffff;
+}
+
+/* Fan Mode Buttons */
+.fan-mode-btn {
+    background-color: #161a24;
+    border: 2px solid #242a3b;
+    border-radius: 10px;
+    padding: 12px 8px;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+
+.fan-mode-btn:hover {
+    background-color: #1c2230;
+    border-color: #3b4560;
+}
+
+.fan-mode-auto-active {
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    border: 2px solid #38bdf8;
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(14, 165, 233, 0.4);
+}
+
+.fan-mode-max-active {
+    background: linear-gradient(135deg, #b91c1c, #ef4444);
+    border: 2px solid #f87171;
+    color: #ffffff;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.55);
+}
+
+.fan-mode-custom-active {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    border: 2px solid #c084fc;
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(168, 85, 247, 0.4);
+}
+
+/* Progress Bars */
+progressbar.nitro-cpu-bar trough {
+    background-color: #1a202c;
     border-radius: 6px;
-    min-height: 10px;
+    min-height: 8px;
 }
-progressbar.nitro-fan-bar progress {
-    background: linear-gradient(90deg, #00b4d8, #0077b6);
+progressbar.nitro-cpu-bar progress {
+    background: linear-gradient(90deg, #0284c7, #00d2ff);
     border-radius: 6px;
 }
+
 progressbar.nitro-gpu-bar trough {
-    background-color: #24252c;
+    background-color: #1a202c;
     border-radius: 6px;
     min-height: 8px;
 }
 progressbar.nitro-gpu-bar progress {
-    background: linear-gradient(90deg, #76b900, #5a8e00);
+    background: linear-gradient(90deg, #059669, #10b981);
     border-radius: 6px;
 }
+
 scale.nitro-slider trough {
-    background-color: #24252c;
+    background-color: #1a202c;
     border-radius: 6px;
     min-height: 8px;
 }
 scale.nitro-slider highlight {
-    background: linear-gradient(90deg, #7b2cbf, #c77dff);
+    background: linear-gradient(90deg, #7c3aed, #c084fc);
     border-radius: 6px;
 }
 scale.nitro-slider slider {
     background-color: #ffffff;
-    border: 2px solid #9d4edd;
+    border: 2px solid #a855f7;
     border-radius: 50%;
     min-width: 18px;
     min-height: 18px;
+}
+
+.status-pill {
+    background-color: #064e3b;
+    border: 1px solid #059669;
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #34d399;
 }
 """
 
@@ -161,20 +213,16 @@ class NitroSenseWindow(Adw.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_title("NitroSense")
-        self.set_default_size(820, 780)
+        self.set_default_size(860, 800)
         self.add_css_class("nitrosense-window")
 
         self.backend = NitroBackend()
-        self.backend._last_total = None
-        self.backend._last_idle = None
         self._is_user_dragging = False
 
         self._load_css()
         self._build_ui()
 
-        # Update initial data
         self.update_stats()
-        # Schedule periodic updates every 1.5 seconds
         GLib.timeout_add(1500, self.update_stats)
 
     def _load_css(self):
@@ -188,15 +236,29 @@ class NitroSenseWindow(Adw.ApplicationWindow):
 
     def _build_ui(self):
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        
         self.toast_overlay = Adw.ToastOverlay()
         self.toast_overlay.set_child(main_box)
         self.set_content(self.toast_overlay)
 
         # Header Bar
         header = Adw.HeaderBar()
-        title_widget = Adw.WindowTitle(title="NitroSense", subtitle="Acer Nitro V 15 (ANV15-51)")
-        header.set_title_widget(title_widget)
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        title_box.set_valign(Gtk.Align.CENTER)
+        
+        main_title = Gtk.Label(label="NitroSense", xalign=0.5)
+        main_title.set_css_classes(["card-title"])
+        
+        sub_title = Gtk.Label(label="Acer Nitro V 15 (ANV15-51)", xalign=0.5)
+        sub_title.set_css_classes(["stat-subtext"])
+        
+        title_box.append(main_title)
+        title_box.append(sub_title)
+        header.set_title_widget(title_box)
+
+        # Right status pill in header
+        self.status_pill = Gtk.Label(label="DAEMON ACTIVE")
+        self.status_pill.add_css_class("status-pill")
+        header.pack_end(self.status_pill)
         main_box.append(header)
 
         # Scrollable content
@@ -204,38 +266,32 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         scroller.set_vexpand(True)
         main_box.append(scroller)
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
         content.set_margin_top(16)
         content.set_margin_bottom(24)
         content.set_margin_start(20)
         content.set_margin_end(20)
         scroller.set_child(content)
 
-        # 1. Thermal & Cooling Grid (CPU & GPU Fan Cards)
+        # 1. Thermal & Cooling Grid (CPU & GPU)
         cards_grid = Gtk.Grid(column_spacing=16, row_spacing=16, column_homogeneous=True)
         content.append(cards_grid)
 
-        # CPU Card
         self.cpu_card = self._create_cooling_card(
-            title="CPU Cooling & Fan",
+            title="CPU Thermal & Fan",
             icon_name="processor-symbolic",
             is_cpu=True
         )
         cards_grid.attach(self.cpu_card, 0, 0, 1, 1)
 
-        # GPU Card
         self.gpu_card = self._create_cooling_card(
-            title="GPU Cooling & Fan",
+            title="GPU Thermal & Fan",
             icon_name="video-display-symbolic",
             is_cpu=False
         )
         cards_grid.attach(self.gpu_card, 1, 0, 1, 1)
 
-        # 2. Fan Speed Control Section (Auto / Max / Custom + Slider)
-        fan_control_card = self._create_fan_control_card()
-        content.append(fan_control_card)
-
-        # 3. Performance / Thermal Profiles Section
+        # 2. Operating Thermal Profiles (Whisper, Balanced, Performance, Eco)
         profile_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         profile_card.add_css_class("nitro-card")
         content.append(profile_card)
@@ -249,20 +305,19 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         profile_card.append(prof_header_box)
 
         prof_desc = Gtk.Label(
-            label="Hardware power target, thermal headroom, and auto cooling response.",
+            label="Hardware TDP targets, thermal ceiling, and dynamic cooling response curve.",
             xalign=0
         )
         prof_desc.add_css_class("stat-subtext")
         profile_card.append(prof_desc)
 
-        # Profile Switcher Buttons
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, homogeneous=True)
         btn_box.set_margin_top(6)
         profile_card.append(btn_box)
 
-        self.btn_quiet = self._create_profile_btn("Whisper / Quiet", "🍃", "Silent fan speed", "quiet")
+        self.btn_quiet = self._create_profile_btn("Whisper", "🍃", "Silent fan profile", "quiet")
         self.btn_balanced = self._create_profile_btn("Balanced", "⚡", "Dynamic auto curve", "balanced")
-        self.btn_perf = self._create_profile_btn("Performance", "🔥", "Max cooling & boost", "performance")
+        self.btn_perf = self._create_profile_btn("Performance", "🔥", "Maximum boost & power", "performance")
         self.btn_eco = self._create_profile_btn("Eco Saver", "🔋", "Battery priority", "eco")
 
         btn_box.append(self.btn_quiet)
@@ -270,9 +325,13 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         btn_box.append(self.btn_perf)
         btn_box.append(self.btn_eco)
 
-        self.profile_status_lbl = Gtk.Label(label="Active Mode: Balanced", xalign=0)
+        self.profile_status_lbl = Gtk.Label(label="Active Profile: Balanced", xalign=0)
         self.profile_status_lbl.add_css_class("stat-subtext")
         profile_card.append(self.profile_status_lbl)
+
+        # 3. Fan Speed Control Section (Auto / Max / Custom + Slider)
+        fan_control_card = self._create_fan_control_card()
+        content.append(fan_control_card)
 
         # 4. Dedicated GPU Card (NVIDIA RTX 3050)
         self.nv_card = self._create_nvidia_card()
@@ -286,7 +345,6 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.add_css_class("nitro-card")
 
-        # Header
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         img = Gtk.Image.new_from_icon_name(icon_name)
         title_lbl = Gtk.Label(label=title, xalign=0)
@@ -295,22 +353,19 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         h_box.append(title_lbl)
         box.append(h_box)
 
-        # Fan RPM row
         fan_header = Gtk.Label(label="FAN ROTATIONAL SPEED", xalign=0)
         fan_header.add_css_class("stat-subtext")
         box.append(fan_header)
 
         fan_val_lbl = Gtk.Label(label="-- RPM", xalign=0)
-        fan_val_lbl.add_css_class("fan-label")
+        fan_val_lbl.add_css_class("fan-label" if is_cpu else "fan-label-gpu")
         box.append(fan_val_lbl)
 
-        # Progress bar
         bar = Gtk.ProgressBar()
-        bar.add_css_class("nitro-fan-bar")
+        bar.add_css_class("nitro-cpu-bar" if is_cpu else "nitro-gpu-bar")
         bar.set_fraction(0.0)
         box.append(bar)
 
-        # Temp & Load Row
         stats_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16, homogeneous=True)
         stats_box.set_margin_top(4)
         box.append(stats_box)
@@ -350,48 +405,45 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         box.add_css_class("nitro-card")
 
-        # Header
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         img = Gtk.Image.new_from_icon_name("weather-windy-symbolic")
-        title_lbl = Gtk.Label(label="Fan Control Mode", xalign=0)
+        title_lbl = Gtk.Label(label="Fan Speed Control Mode", xalign=0)
         title_lbl.add_css_class("card-title")
         h_box.append(img)
         h_box.append(title_lbl)
         box.append(h_box)
 
         sub_desc = Gtk.Label(
-            label="Switch fan behavior between Automatic (dynamic curves), Max (100% full speed), or Custom manual speed slider.",
+            label="Choose dynamic firmware cooling (Auto), full throttle 100% cooling (Max), or manual slider control (Custom).",
             xalign=0
         )
         sub_desc.add_css_class("stat-subtext")
         box.append(sub_desc)
 
-        # 3 Mode Buttons: Auto, Max, Custom
         modes_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, homogeneous=True)
         box.append(modes_row)
 
-        self.btn_fan_auto = Gtk.Button(label="🔄 Auto (خودکار)")
+        self.btn_fan_auto = Gtk.Button(label="🔄 Auto Dynamic")
         self.btn_fan_auto.add_css_class("fan-mode-btn")
         self.btn_fan_auto.connect("clicked", lambda b: self._on_fan_mode_clicked("auto"))
         modes_row.append(self.btn_fan_auto)
 
-        self.btn_fan_max = Gtk.Button(label="🚀 Max (حداکثر ۱۰۰٪)")
+        self.btn_fan_max = Gtk.Button(label="🚀 Max Full (100%)")
         self.btn_fan_max.add_css_class("fan-mode-btn")
         self.btn_fan_max.connect("clicked", lambda b: self._on_fan_mode_clicked("max"))
         modes_row.append(self.btn_fan_max)
 
-        self.btn_fan_custom = Gtk.Button(label="🎛️ Custom (تنظیم دستی)")
+        self.btn_fan_custom = Gtk.Button(label="🎛️ Custom Manual")
         self.btn_fan_custom.add_css_class("fan-mode-btn")
         self.btn_fan_custom.connect("clicked", lambda b: self._on_fan_mode_clicked("custom"))
         modes_row.append(self.btn_fan_custom)
 
-        # Custom Slider Box
         self.slider_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.slider_box.set_margin_top(6)
         box.append(self.slider_box)
 
         slider_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        slider_title = Gtk.Label(label="Manual Speed Target:", xalign=0)
+        slider_title = Gtk.Label(label="Manual Target Speed:", xalign=0)
         slider_title.add_css_class("card-title")
         self.slider_val_lbl = Gtk.Label(label="60% (~4800 RPM)", xalign=1)
         self.slider_val_lbl.set_hexpand(True)
@@ -400,7 +452,6 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         slider_header.append(self.slider_val_lbl)
         self.slider_box.append(slider_header)
 
-        # Scale slider (25% to 100%)
         self.fan_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 25, 100, 5)
         self.fan_slider.add_css_class("nitro-slider")
         self.fan_slider.set_value(60)
@@ -408,7 +459,6 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         self.fan_slider.connect("value-changed", self._on_slider_value_changed)
         self.slider_box.append(self.fan_slider)
 
-        # Quick preset buttons (30%, 50%, 75%, 100%)
         presets_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         presets_row.set_margin_top(4)
         for pct in [30, 50, 75, 100]:
@@ -422,7 +472,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
     def _on_fan_mode_clicked(self, mode):
         ok, res = self.backend.set_fan_mode(mode)
         if ok:
-            title_map = {"auto": "Auto (خودکار)", "max": "Max (حداکثر ۱۰۰٪)", "custom": "Custom (دستی)"}
+            title_map = {"auto": "Auto Dynamic", "max": "Max Full Throttle", "custom": "Custom Manual"}
             toast = Adw.Toast.new(f"Fan Mode: {title_map.get(mode, mode)}")
             toast.set_timeout(2)
             self.toast_overlay.add_toast(toast)
@@ -435,7 +485,6 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         pct = int(scale.get_value())
         rpm_est = int(round(1800 + (pct / 100.0) * (7800 - 1800)))
         self.slider_val_lbl.set_label(f"{pct}% (~{rpm_est} RPM)")
-        # Apply custom speed
         self.backend.set_fan_speed(pct)
 
     def _on_preset_clicked(self, pct):
@@ -483,7 +532,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
 
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         img = Gtk.Image.new_from_icon_name("video-display-symbolic")
-        title_lbl = Gtk.Label(label="NVIDIA GeForce RTX 3050 Laptop GPU (6GB)", xalign=0)
+        title_lbl = Gtk.Label(label="NVIDIA Dedicated GPU Telemetry", xalign=0)
         title_lbl.add_css_class("card-title")
         h_box.append(img)
         h_box.append(title_lbl)
@@ -492,8 +541,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         stats_grid = Gtk.Grid(column_spacing=16, row_spacing=6, column_homogeneous=True)
         box.append(stats_grid)
 
-        # VRAM Row
-        vram_title = Gtk.Label(label="VRAM Usage", xalign=0)
+        vram_title = Gtk.Label(label="VRAM Allocation", xalign=0)
         vram_title.add_css_class("stat-subtext")
         stats_grid.attach(vram_title, 0, 0, 1, 1)
 
@@ -505,14 +553,17 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         self.nv_vram_bar.add_css_class("nitro-gpu-bar")
         stats_grid.attach(self.nv_vram_bar, 0, 1, 2, 1)
 
-        # Power Draw
-        pwr_title = Gtk.Label(label="Power Draw", xalign=0)
+        pwr_title = Gtk.Label(label="Power Consumption", xalign=0)
         pwr_title.add_css_class("stat-subtext")
         stats_grid.attach(pwr_title, 0, 2, 1, 1)
 
         self.nv_pwr_lbl = Gtk.Label(label="-- W", xalign=1)
         self.nv_pwr_lbl.add_css_class("card-title")
         stats_grid.attach(self.nv_pwr_lbl, 1, 2, 1, 1)
+
+        self.nv_clock_lbl = Gtk.Label(label="Clocks: -- MHz Core / -- MHz Mem", xalign=0)
+        self.nv_clock_lbl.add_css_class("stat-subtext")
+        stats_grid.attach(self.nv_clock_lbl, 0, 3, 2, 1)
 
         return box
 
@@ -522,7 +573,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
 
         h_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         img = Gtk.Image.new_from_icon_name("battery-level-80-charging-symbolic")
-        title_lbl = Gtk.Label(label="System & Battery Status", xalign=0)
+        title_lbl = Gtk.Label(label="System & Battery Telemetry", xalign=0)
         title_lbl.add_css_class("card-title")
         h_box.append(img)
         h_box.append(title_lbl)
@@ -531,7 +582,6 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20, homogeneous=True)
         box.append(row)
 
-        # Memory
         mem_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         mem_h = Gtk.Label(label="RAM USAGE", xalign=0)
         mem_h.add_css_class("stat-subtext")
@@ -541,9 +591,8 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         mem_box.append(self.ram_lbl)
         row.append(mem_box)
 
-        # Battery
         bat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        bat_h = Gtk.Label(label="BATTERY", xalign=0)
+        bat_h = Gtk.Label(label="BATTERY STATUS", xalign=0)
         bat_h.add_css_class("stat-subtext")
         self.bat_lbl = Gtk.Label(label="-- %", xalign=0)
         self.bat_lbl.add_css_class("card-title")
@@ -551,9 +600,8 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         bat_box.append(self.bat_lbl)
         row.append(bat_box)
 
-        # Driver
         drv_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        drv_h = Gtk.Label(label="DRIVER STATUS", xalign=0)
+        drv_h = Gtk.Label(label="INTERFACE DRIVER", xalign=0)
         drv_h.add_css_class("stat-subtext")
         self.drv_lbl = Gtk.Label(label="acer_wmi (Predator v4 + PWM)", xalign=0)
         self.drv_lbl.add_css_class("card-title")
@@ -578,7 +626,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
         try:
             m = self.backend.get_all_metrics()
 
-            # CPU Fan & Temp
+            # CPU
             cfan = m.get("cpu_fan_rpm", 0)
             self.cpu_fan_lbl.set_label(f"{cfan} RPM")
             self.cpu_fan_bar.set_fraction(min(1.0, cfan / 8000.0) if cfan > 0 else 0.0)
@@ -588,7 +636,7 @@ class NitroSenseWindow(Adw.ApplicationWindow):
             cutil = m.get("cpu_util", 0.0)
             self.cpu_load_lbl.set_label(f"{cutil:.1f} %")
 
-            # GPU Fan & Temp
+            # GPU
             gfan = m.get("gpu_fan_rpm", 0)
             self.gpu_fan_lbl.set_label(f"{gfan} RPM")
             self.gpu_fan_bar.set_fraction(min(1.0, gfan / 8000.0) if gfan > 0 else 0.0)
@@ -606,18 +654,18 @@ class NitroSenseWindow(Adw.ApplicationWindow):
 
             if cur_fan_mode == "auto":
                 self.btn_fan_auto.add_css_class("fan-mode-auto-active")
-                self.slider_box.set_opacity(0.4)
+                self.slider_box.set_opacity(0.35)
                 self.fan_slider.set_sensitive(False)
             elif cur_fan_mode == "max":
                 self.btn_fan_max.add_css_class("fan-mode-max-active")
-                self.slider_box.set_opacity(0.4)
+                self.slider_box.set_opacity(0.35)
                 self.fan_slider.set_sensitive(False)
             elif cur_fan_mode == "custom":
                 self.btn_fan_custom.add_css_class("fan-mode-custom-active")
                 self.slider_box.set_opacity(1.0)
                 self.fan_slider.set_sensitive(True)
 
-            # NVIDIA Details
+            # NVIDIA
             nv = m.get("nvidia", {})
             if nv.get("available", False):
                 used_mb = nv.get("mem_used", 0)
@@ -626,23 +674,37 @@ class NitroSenseWindow(Adw.ApplicationWindow):
                 self.nv_vram_bar.set_fraction(min(1.0, used_mb / tot_mb) if tot_mb > 0 else 0.0)
                 pwr = nv.get("power", 0.0)
                 self.nv_pwr_lbl.set_label(f"{pwr:.1f} W")
+                cg = nv.get("clock_graphics", 0)
+                cm = nv.get("clock_memory", 0)
+                self.nv_clock_lbl.set_label(f"Clocks: {cg} MHz Core / {cm} MHz VRAM")
 
             # System
             m_used = m.get("mem_used_mb", 0)
             m_tot = m.get("mem_total_mb", 0)
             m_pct = m.get("mem_util", 0.0)
-            self.ram_lbl.set_label(f"{m_used} MB ({m_pct:.0f}%)")
+            self.ram_lbl.set_label(f"{m_used} MB / {m_tot} MB ({m_pct:.0f}%)")
 
             bat = m.get("battery", {})
             if bat.get("present", False):
-                self.bat_lbl.set_label(f"{bat.get("capacity", 0)}% ({bat.get("status", "Unknown")})")
+                cap = bat.get("capacity", 0)
+                st = bat.get("status", "Unknown")
+                hlth = bat.get("health_pct", 100)
+                self.bat_lbl.set_label(f"{cap}% ({st}) • {hlth}% Health")
+
+            # Daemon Status
+            d_ok = m.get("daemon_active", False)
+            if d_ok:
+                self.status_pill.set_label("DAEMON ACTIVE")
+                self.status_pill.remove_css_class("temp-badge-warm")
+                self.status_pill.add_css_class("status-pill")
+            else:
+                self.status_pill.set_label("STANDALONE")
 
             # Profile state
             active_prof = m.get("profile", {}).get("raw", "balanced")
             display_prof = m.get("profile", {}).get("display", "Balanced")
             self.profile_status_lbl.set_label(f"Active Profile: {display_prof} ({active_prof})")
 
-            # Highlight active button
             btn_map = [
                 (self.btn_quiet, "quiet"),
                 (self.btn_balanced, "balanced"),

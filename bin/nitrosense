@@ -134,7 +134,7 @@ def main():
         ok, res = backend.set_fan_mode(cmd)
         if ok:
             print(f"{GREEN}✓ Fan mode set to {BOLD}{cmd.upper()}{RESET}!")
-            time.sleep(0.5)
+            time.sleep(0.05)
             print(print_dashboard(backend))
         else:
             print(f"{RED}✗ Failed to set fan mode: {res}{RESET}")
@@ -147,7 +147,7 @@ def main():
         ok, res = backend.set_fan_speed(speed)
         if ok:
             print(f"{GREEN}✓ Custom fan speed set to {BOLD}{speed}%{RESET}!")
-            time.sleep(0.5)
+            time.sleep(0.05)
             print(print_dashboard(backend))
         else:
             print(f"{RED}✗ Failed to set custom fan speed: {res}{RESET}")
@@ -157,7 +157,7 @@ def main():
         ok, res = backend.set_platform_profile(target)
         if ok:
             print(f"{GREEN}✓ Successfully switched to {BOLD}{target.capitalize()}{RESET}{GREEN} mode!{RESET}")
-            time.sleep(0.5)
+            time.sleep(0.05)
             print(print_dashboard(backend))
         else:
             print(f"{RED}✗ Failed to set mode: {res}{RESET}")

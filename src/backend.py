@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     "profile": "performance",
     "fan_mode": "auto",
     "fan_speed": 60,
+    "gpu_fan_speed": 60,
 }
 
 PROFILE_MAP = {
@@ -50,6 +51,7 @@ class NitroBackend:
         self._last_total = None
         self._last_idle = None
         self.acer_hwmon = self._locate_acer_hwmon()
+        self.cpu_model = self._get_cpu_model()
 
     def _locate_acer_hwmon(self):
         for p in glob.glob("/sys/class/hwmon/hwmon*"):
@@ -62,6 +64,16 @@ class NitroBackend:
                 except Exception:
                     pass
         return None
+
+    def _get_cpu_model(self):
+        try:
+            with open("/proc/cpuinfo", "r") as f:
+                for line in f:
+                    if "model name" in line:
+                        return line.split(":")[1].strip()
+        except Exception:
+            pass
+        return "Intel Core Processor"
 
     def read_file(self, path, default="0"):
         if not path or not os.path.exists(path):
@@ -127,6 +139,22 @@ class NitroBackend:
         except Exception:
             return 0.0
 
+    def get_cpu_frequency_ghz(self):
+        try:
+            freqs = []
+            for p in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"):
+                with open(p, "r") as f:
+                    freqs.append(int(f.read().strip()))
+            if freqs:
+                return round(sum(freqs) / len(freqs) / 1000000.0, 2)
+        except Exception:
+            pass
+        return 0.0
+
+    def get_cpu_governor(self):
+        gov = self.read_file("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor", "unknown")
+        return gov.strip()
+
     def get_mem_utilization(self):
         try:
             mem_total = 0
@@ -148,41 +176,66 @@ class NitroBackend:
         stats = {
             "available": False,
             "name": "NVIDIA RTX 3050",
+            "driver": "Unknown",
             "utilization": 0,
             "mem_used": 0,
             "mem_total": 6144,
             "temp": 0,
             "power": 0.0,
+            "clock_graphics": 0,
+            "clock_memory": 0,
         }
         try:
             cmd = [
                 "nvidia-smi",
-                "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                "--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.current.graphics,clocks.current.memory",
                 "--format=csv,noheader,nounits"
             ]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
             if res.returncode == 0 and res.stdout.strip():
                 parts = [p.strip() for p in res.stdout.strip().split(",")]
-                if len(parts) >= 6:
+                if len(parts) >= 9:
                     stats["available"] = True
                     stats["name"] = parts[0]
-                    stats["utilization"] = int(float(parts[1]))
-                    stats["mem_used"] = int(float(parts[2]))
-                    stats["mem_total"] = int(float(parts[3]))
-                    stats["temp"] = int(float(parts[4]))
-                    stats["power"] = float(parts[5])
+                    stats["driver"] = parts[1]
+                    stats["utilization"] = int(float(parts[2]))
+                    stats["mem_used"] = int(float(parts[3]))
+                    stats["mem_total"] = int(float(parts[4]))
+                    stats["temp"] = int(float(parts[5]))
+                    stats["power"] = float(parts[6])
+                    stats["clock_graphics"] = int(float(parts[7]))
+                    stats["clock_memory"] = int(float(parts[8]))
         except Exception:
             pass
         return stats
 
     def get_battery_stats(self):
-        bat = {"present": False, "capacity": 0, "status": "Unknown"}
+        bat = {
+            "present": False,
+            "capacity": 0,
+            "status": "Unknown",
+            "health_pct": 100,
+            "cycle_count": 0,
+        }
         bat_dir = "/sys/class/power_supply/BAT1"
         if os.path.exists(bat_dir):
             bat["present"] = True
             bat["capacity"] = int(self.read_file(f"{bat_dir}/capacity", "0"))
             bat["status"] = self.read_file(f"{bat_dir}/status", "Unknown")
+            bat["cycle_count"] = int(self.read_file(f"{bat_dir}/cycle_count", "0"))
+
+            full = int(self.read_file(f"{bat_dir}/charge_full", "0"))
+            design = int(self.read_file(f"{bat_dir}/charge_full_design", "0"))
+            if full > 0 and design > 0:
+                bat["health_pct"] = min(100, int(round((full / design) * 100)))
         return bat
+
+    def is_daemon_active(self):
+        try:
+            res = subprocess.run(["systemctl", "is-active", "nitrosensed"], capture_output=True, text=True)
+            return res.stdout.strip() == "active"
+        except Exception:
+            return False
 
     def get_platform_profile(self):
         raw = self.read_file("/sys/firmware/acpi/platform_profile", "balanced")
@@ -193,7 +246,7 @@ class NitroBackend:
             "choices": ["quiet", "balanced", "balanced-performance", "low-power"]
         }
 
-    def set_platform_profile(self, target):
+    def set_platform_profile(self, target, save=True):
         mapped = PROFILE_MAP.get(target.lower(), target)
         norm = NORM_MAP.get(target.lower(), target)
         path = "/sys/firmware/acpi/platform_profile"
@@ -208,12 +261,34 @@ class NitroBackend:
             success = (res.returncode == 0)
 
         if success:
-            self.save_config(profile=norm)
+            if save:
+                self.save_config(profile=norm)
             self._sync_tuned(norm)
             return True, mapped
         return False, mapped
 
     def _sync_tuned(self, norm):
+        dbus_map = {
+            "performance": "performance",
+            "balanced": "balanced",
+            "quiet": "power-saver",
+            "eco": "power-saver",
+        }
+        target_dbus = dbus_map.get(norm, "balanced")
+        try:
+            res = subprocess.run([
+                "gdbus", "call", "--system",
+                "--dest", "net.hadess.PowerProfiles",
+                "--object-path", "/net/hadess/PowerProfiles",
+                "--method", "org.freedesktop.DBus.Properties.Set",
+                "net.hadess.PowerProfiles", "ActiveProfile",
+                f"<{target_dbus!r}>"
+            ], capture_output=True, timeout=0.8)
+            if res.returncode == 0:
+                return
+        except Exception:
+            pass
+
         tuned_map = {
             "performance": "throughput-performance",
             "balanced": "balanced",
@@ -308,18 +383,19 @@ class NitroBackend:
             res_ok = (res.returncode == 0)
 
         if res_ok:
-            self.save_config(fan_mode="custom", fan_speed=int(cpu_pct))
+            self.save_config(fan_mode="custom", fan_speed=int(cpu_pct), gpu_fan_speed=int(gpu_pct))
             return True, (cpu_pct, gpu_pct)
         return False, "Failed to set custom fan speed"
 
     def apply_saved_config(self):
         cfg = self.load_config()
         prof = cfg.get("profile", "performance")
-        self.set_platform_profile(prof)
+        self.set_platform_profile(prof, save=False)
         fan_mode = cfg.get("fan_mode", "auto")
         if fan_mode == "custom":
             speed = cfg.get("fan_speed", 60)
-            self.set_fan_speed(speed)
+            gpu_speed = cfg.get("gpu_fan_speed", speed)
+            self.set_fan_speed(speed, gpu_speed)
         else:
             self.set_fan_mode(fan_mode)
         return True
@@ -343,10 +419,13 @@ class NitroBackend:
 
         mem_pct, mem_used, mem_total = self.get_mem_utilization()
         cpu_pct = self.get_cpu_utilization()
+        cpu_freq = self.get_cpu_frequency_ghz()
+        cpu_gov = self.get_cpu_governor()
         nv_stats = self.get_nvidia_stats()
         profile = self.get_platform_profile()
         battery = self.get_battery_stats()
         fan_mode, cpu_pwm_pct, gpu_pwm_pct = self.get_fan_mode()
+        daemon_ok = self.is_daemon_active()
 
         if gpu_temp == 0.0 and nv_stats.get("temp", 0) > 0:
             gpu_temp = float(nv_stats["temp"])
@@ -357,6 +436,9 @@ class NitroBackend:
             "cpu_temp": round(cpu_temp, 1),
             "gpu_temp": round(gpu_temp, 1),
             "cpu_util": round(cpu_pct, 1),
+            "cpu_freq_ghz": cpu_freq,
+            "cpu_model": self.cpu_model,
+            "cpu_governor": cpu_gov,
             "mem_util": round(mem_pct, 1),
             "mem_used_mb": mem_used,
             "mem_total_mb": mem_total,
@@ -366,4 +448,5 @@ class NitroBackend:
             "fan_mode": fan_mode,
             "cpu_pwm_pct": cpu_pwm_pct,
             "gpu_pwm_pct": gpu_pwm_pct,
+            "daemon_active": daemon_ok,
         }
